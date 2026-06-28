@@ -86,7 +86,12 @@ function validateActionResponse(action, value) {
   throw new Error(`INVALID_RESPONSE: Unsupported action ${action}`);
 }
 
+function customSourcePolicy(result) {
+  if (!result || result.active !== true) return 'builtin';
+  return result.url ? 'custom' : 'fallback';
+}
+
 module.exports = {
   LX_API_VERSION, LX_ENV, EVENT_NAMES, SOURCE_KEYS, QUALITY_KEYS, ACTIONS,
-  parseScriptInfo, filterInitPayload, selectLxQuality, validateActionResponse,
+  parseScriptInfo, filterInitPayload, selectLxQuality, validateActionResponse, customSourcePolicy,
 };
