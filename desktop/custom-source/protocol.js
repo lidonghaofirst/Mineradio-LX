@@ -56,8 +56,9 @@ function selectLxQuality(target, supported) {
 function validateActionResponse(action, value) {
   if (action === 'musicUrl' || action === 'pic') {
     let url;
+    const hasUnsafeUrlChars = typeof value !== 'string' || value !== value.trim() || /[\u0000-\u001F\u007F]/.test(value);
     try {
-      url = typeof value === 'string' && /^https?:\/\//i.test(value) ? new URL(value) : null;
+      url = !hasUnsafeUrlChars && /^https?:\/\//i.test(value) ? new URL(value) : null;
     } catch {
       url = null;
     }

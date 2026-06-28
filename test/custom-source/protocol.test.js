@@ -67,3 +67,15 @@ test('rejects malformed http-ish URL responses', () => {
   assert.throws(() => validateActionResponse('musicUrl', 'https:foo'), /INVALID_RESPONSE/);
   assert.throws(() => validateActionResponse('pic', 'http:/bad'), /INVALID_RESPONSE/);
 });
+
+test('rejects musicUrl responses with raw whitespace or control characters', () => {
+  for (const value of [
+    'https://example.com/a.mp3\n',
+    ' https://example.com/a.mp3',
+    'https://example.com/a.mp3 ',
+    'https://example.com/a.mp3\t',
+    'https://example.com/a.mp3\r',
+  ]) {
+    assert.throws(() => validateActionResponse('musicUrl', value), /INVALID_RESPONSE/);
+  }
+});
