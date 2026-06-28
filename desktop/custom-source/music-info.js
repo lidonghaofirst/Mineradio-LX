@@ -28,7 +28,7 @@ function toLxMusicInfo(song) {
     _qualitys: {},
   };
   if (source === 'tx') {
-    meta.strMediaMid = String(song.mediaMid || song.media_mid || song.strMediaMid || songId);
+    meta.strMediaMid = String(song.mediaMid || song.media_mid || song.strMediaMid || song.songId || songId);
     meta.id = Number(song.qqId || song.songId || 0) || undefined;
     meta.albumMid = String(song.albumMid || song.album_mid || albumId);
   }

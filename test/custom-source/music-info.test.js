@@ -20,3 +20,9 @@ test('maps QQ identifiers to tx fields and legacy aliases', () => {
   assert.equal(info.meta.albumMid, 'album1');
   assert.equal(info.songmid, 'mid1');
 });
+
+test('uses QQ songId as media mid alias before computed songmid fallback', () => {
+  const info = toLxMusicInfo({ provider: 'qq', mid: 'song-mid', songId: 'media-from-songid' });
+  assert.equal(info.meta.strMediaMid, 'media-from-songid');
+  assert.equal(info.songmid, 'song-mid');
+});

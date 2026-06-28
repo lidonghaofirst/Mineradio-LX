@@ -11,3 +11,10 @@ test('redacts nested credentials without mutating input', () => {
   assert.equal(output.access_token, '[REDACTED]');
   assert.equal(input.access_token, 'secret');
 });
+
+test('redacts circular array references', () => {
+  const input = ['safe'];
+  input.push(input);
+  const output = redactSecrets(input);
+  assert.deepEqual(output, ['safe', '[CIRCULAR]']);
+});
