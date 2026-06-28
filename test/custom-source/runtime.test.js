@@ -32,6 +32,7 @@ class FakeWebContents extends EventEmitter {
   constructor(id = nextWebContentsId++) {
     super();
     this.id = id;
+    this.audioMuted = false;
     this.sent = [];
     this.session = {
       setPermissionRequestHandler: handler => { this.permissionHandler = handler; },
@@ -49,6 +50,15 @@ class FakeWebContents extends EventEmitter {
 
   closeDevTools() {
     this.devToolsClosed = true;
+  }
+
+  setAudioMuted(value) {
+    this.audioMuted = value;
+  }
+
+  executeJavaScript(script) {
+    this.executedJavaScript = script;
+    return Promise.resolve();
   }
 }
 
@@ -153,18 +163,23 @@ test('creates a hidden sandbox and blocks renderer escape surfaces', async () =>
       nodeIntegration: win.options.webPreferences.nodeIntegration,
       contextIsolation: win.options.webPreferences.contextIsolation,
       sandbox: win.options.webPreferences.sandbox,
+      devTools: win.options.webPreferences.devTools,
     },
-    { nodeIntegration: false, contextIsolation: true, sandbox: true },
+    { nodeIntegration: false, contextIsolation: true, sandbox: true, devTools: false },
   );
+  assert.equal(win.webContents.audioMuted, true);
   assert.equal(win.options.webPreferences.partition, `mineradio-lx-${runtime.runtimeId}`);
   assert.equal(win.options.webPreferences.partition.startsWith('persist:'), false);
   assert.equal(win.options.webPreferences.additionalArguments.length, 1);
   assert.match(win.options.webPreferences.additionalArguments[0], /^--mineradio-lx-runtime-id=[\w-]+$/);
-  for (const eventName of ['will-navigate', 'will-redirect', 'will-attach-webview', 'media-started-playing']) {
+  for (const eventName of ['will-navigate', 'will-redirect', 'will-attach-webview']) {
     const event = { prevented: false, preventDefault() { this.prevented = true; } };
     win.webContents.emit(eventName, event);
     assert.equal(event.prevented, true, `${eventName} was not blocked`);
   }
+  assert.doesNotThrow(() => win.webContents.emit('media-started-playing'));
+  assert.equal(win.webContents.audioMuted, true);
+  assert.match(win.webContents.executedJavaScript, /pause\(\)/);
   assert.deepEqual(win.webContents.windowOpenHandler(), { action: 'deny' });
   let permission;
   win.webContents.permissionHandler(win.webContents, 'camera', value => { permission = value; });
@@ -180,6 +195,22 @@ test('creates a hidden sandbox and blocks renderer escape surfaces', async () =>
     runtimeId: runtime.runtimeId,
     script: 'globalThis.marker = true',
   }]);
+  runtime.stop();
+  await assert.rejects(started, /stopped/i);
+});
+
+test('keeps DevTools available in non-packaged runtime windows for diagnostics', async () => {
+  FakeBrowserWindow.instances.length = 0;
+  const { LxSourceRuntime } = loadRuntime();
+  const ipcMain = new FakeIpcMain();
+  const runtime = new LxSourceRuntime({
+    script: 'x',
+    currentScriptInfo: {},
+    electron: { BrowserWindow: FakeBrowserWindow, ipcMain, app: { isPackaged: false } },
+  });
+  const started = runtime.start();
+  const win = FakeBrowserWindow.instances[0];
+  assert.equal(win.options.webPreferences.devTools, true);
   runtime.stop();
   await assert.rejects(started, /stopped/i);
 });

@@ -12,6 +12,14 @@ const INIT_TIMEOUT = 10_000;
 const ACTION_TIMEOUT = 20_000;
 const hosts = new WeakMap();
 const SCRIPT_INFO_KEYS = ['name', 'description', 'version', 'author', 'homepage'];
+const PAUSE_MEDIA_SCRIPT = `
+(() => {
+  for (const element of document.querySelectorAll('audio,video')) {
+    element.muted = true;
+    element.pause();
+  }
+})()
+`;
 
 function sanitizeScriptInfo(value) {
   const result = {};
@@ -66,6 +74,16 @@ function parseHttpBody(raw) {
 
 function errorResult(error) {
   return { error: String(error?.message || error).slice(0, 1024) };
+}
+
+function blockRuntimeMedia(contents) {
+  if (typeof contents.setAudioMuted === 'function') contents.setAudioMuted(true);
+  contents.on('media-started-playing', () => {
+    if (typeof contents.setAudioMuted === 'function') contents.setAudioMuted(true);
+    if (typeof contents.executeJavaScript === 'function') {
+      Promise.resolve(contents.executeJavaScript(PAUSE_MEDIA_SCRIPT, true)).catch(() => {});
+    }
+  });
 }
 
 function lookupRuntime(host, event, payload) {
@@ -240,6 +258,7 @@ class LxSourceRuntime {
           nodeIntegrationInWorker: false,
           contextIsolation: true,
           sandbox: true,
+          devTools: !app?.isPackaged,
           webviewTag: false,
           partition: `mineradio-lx-${this.runtimeId}`,
           images: false,
@@ -251,9 +270,10 @@ class LxSourceRuntime {
       });
 
       const contents = this.window.webContents;
-      for (const eventName of ['will-navigate', 'will-redirect', 'will-attach-webview', 'media-started-playing']) {
+      for (const eventName of ['will-navigate', 'will-redirect', 'will-attach-webview']) {
         contents.on(eventName, event => event.preventDefault());
       }
+      blockRuntimeMedia(contents);
       contents.setWindowOpenHandler(() => ({ action: 'deny' }));
       contents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
       contents.session.on('will-download', event => event.preventDefault());
