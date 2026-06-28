@@ -37,6 +37,20 @@ test('backs up schema-invalid index before initializing defaults', () => {
   assert.equal(fs.readFileSync(path.join(root, backups[0]), 'utf8'), invalid);
 });
 
+test('backs up and resets an index whose only invalid field is activeId', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-source-'));
+  const invalid = JSON.stringify({ activeId: { bad: true }, items: [] });
+  fs.writeFileSync(path.join(root, 'sources.json'), invalid, 'utf8');
+
+  const store = new CustomSourceStore(root);
+
+  assert.deepEqual(store.list(), []);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'sources.json'), 'utf8')), { activeId: '', items: [] });
+  const backups = fs.readdirSync(root).filter(name => name.startsWith('sources.json.corrupt'));
+  assert.equal(backups.length, 1);
+  assert.equal(fs.readFileSync(path.join(root, backups[0]), 'utf8'), invalid);
+});
+
 test('keeps status sources isolated from caller and returned copies', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-source-'));
   const store = new CustomSourceStore(root);
@@ -82,6 +96,36 @@ test('imports scripts through a temporary file rename', () => {
     assert.equal(scriptWrites.length, 1);
     assert.notEqual(scriptWrites[0], `${imported.id}.js`);
     assert.equal(renames.some(([from, to]) => from !== `${imported.id}.js` && to === `${imported.id}.js`), true);
+  } finally {
+    fs.writeFileSync = originalWriteFileSync;
+    fs.renameSync = originalRenameSync;
+  }
+});
+
+test('replaceScript stages the replacement at the exact .js.next path', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-source-'));
+  const store = new CustomSourceStore(root);
+  const first = store.importScript('a.js', '/**\n * @name A\n * @version 1\n */\nvoid 0');
+  const replacement = '/**\n * @name A\n * @version 2\n */\nvoid 0';
+  const scriptWrites = [];
+  const renames = [];
+  const originalWriteFileSync = fs.writeFileSync;
+  const originalRenameSync = fs.renameSync;
+
+  try {
+    fs.writeFileSync = function writeFileSync(file, data, options) {
+      if (data === replacement) scriptWrites.push(path.basename(String(file)));
+      return originalWriteFileSync.apply(this, arguments);
+    };
+    fs.renameSync = function renameSync(from, to) {
+      renames.push([path.basename(String(from)), path.basename(String(to))]);
+      return originalRenameSync.apply(this, arguments);
+    };
+
+    store.replaceScript(first.id, replacement);
+
+    assert.deepEqual(scriptWrites, [`${first.id}.js.next`]);
+    assert.equal(renames.some(([from, to]) => from === `${first.id}.js.next` && to === `${first.id}.js`), true);
   } finally {
     fs.writeFileSync = originalWriteFileSync;
     fs.renameSync = originalRenameSync;

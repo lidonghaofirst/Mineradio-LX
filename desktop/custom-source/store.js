@@ -43,8 +43,9 @@ class CustomSourceStore {
 
   #normalizeState(parsed) {
     if (!isPlainObject(parsed) || !Array.isArray(parsed.items)) throw new Error('Invalid source index');
+    if (typeof parsed.activeId !== 'string') throw new Error('Invalid active source');
     if (!parsed.items.every(item => isPlainObject(item) && typeof item.id === 'string' && item.id)) throw new Error('Invalid source item');
-    return { activeId: typeof parsed.activeId === 'string' ? parsed.activeId : '', items: parsed.items };
+    return { activeId: parsed.activeId, items: parsed.items };
   }
 
   #backupCorruptIndex() {
@@ -73,6 +74,18 @@ class CustomSourceStore {
   #writeScriptAtomic(id, script) {
     const finalPath = this.#scriptPath(id);
     const temp = path.join(this.scriptDir, `${id}.${Date.now()}_${crypto.randomBytes(3).toString('hex')}.tmp`);
+    try {
+      fs.writeFileSync(temp, script, 'utf8');
+      fs.renameSync(temp, finalPath);
+    } catch (error) {
+      fs.rmSync(temp, { force: true });
+      throw error;
+    }
+  }
+
+  #replaceScriptAtomic(id, script) {
+    const finalPath = this.#scriptPath(id);
+    const temp = `${finalPath}.next`;
     try {
       fs.writeFileSync(temp, script, 'utf8');
       fs.renameSync(temp, finalPath);
@@ -124,13 +137,13 @@ class CustomSourceStore {
     const previousScript = this.getScript(id);
     const info = parseScriptInfo(script);
     const hash = this.#hash(script);
-    this.#writeScriptAtomic(id, script);
+    this.#replaceScriptAtomic(id, script);
     Object.assign(item, info, { hash, status: 'idle', message: '' });
     try {
       this.#save();
     } catch (error) {
       this.state.items[index] = previousItem;
-      this.#writeScriptAtomic(id, previousScript);
+      this.#replaceScriptAtomic(id, previousScript);
       throw error;
     }
     return clone(item);
