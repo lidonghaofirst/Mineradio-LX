@@ -60,3 +60,20 @@ test('redacts auth and broad password credential key variants', () => {
   assert.equal(output.headers.Accept, 'json');
   assert.equal(output.access_token, '[REDACTED]');
 });
+
+test('redacts auth aliases without redacting author or Accept', () => {
+  const output = redactSecrets({
+    authHeader: 'one',
+    basicAuth: 'two',
+    proxyAuth: 'three',
+    authentication: 'four',
+    author: 'writer',
+    Accept: 'json',
+  });
+  assert.equal(output.authHeader, '[REDACTED]');
+  assert.equal(output.basicAuth, '[REDACTED]');
+  assert.equal(output.proxyAuth, '[REDACTED]');
+  assert.equal(output.authentication, '[REDACTED]');
+  assert.equal(output.author, 'writer');
+  assert.equal(output.Accept, 'json');
+});
