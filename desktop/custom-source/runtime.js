@@ -90,6 +90,7 @@ function headerValue(headers, name) {
 }
 
 function bufferFromLimited(value, maxBytes, message) {
+  if (typeof value === 'string' && Buffer.byteLength(value) > maxBytes) throw new Error(message);
   const declaredLength = typeof value?.byteLength === 'number'
     ? value.byteLength
     : Array.isArray(value) ? value.length : null;
@@ -100,7 +101,8 @@ function bufferFromLimited(value, maxBytes, message) {
 }
 
 async function readLimitedResponseBody(response) {
-  const contentLength = Number(headerValue(response.headers, 'content-length'));
+  const rawContentLength = headerValue(response.headers, 'content-length');
+  const contentLength = rawContentLength == null ? null : Number(rawContentLength);
   if (Number.isFinite(contentLength) && contentLength > MAX_HTTP_BODY_BYTES) {
     throw new Error('HTTP_FAILED: Response too large');
   }
@@ -127,6 +129,7 @@ async function readLimitedResponseBody(response) {
     return Buffer.concat(chunks, total);
   }
 
+  if (!Number.isFinite(contentLength)) throw new Error('HTTP_FAILED: Response length is unknown');
   const raw = Buffer.from(await response.arrayBuffer());
   if (raw.length > MAX_HTTP_BODY_BYTES) throw new Error('HTTP_FAILED: Response too large');
   return raw;

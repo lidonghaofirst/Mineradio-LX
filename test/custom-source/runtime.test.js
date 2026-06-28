@@ -389,7 +389,7 @@ test('HTTP service parses responses, supports cancellation, and aborts on stop',
         return {
           status: 200,
           statusText: 'OK',
-          headers: new Headers({ 'content-type': 'application/json' }),
+          headers: new Headers({ 'content-type': 'application/json', 'content-length': '11' }),
           arrayBuffer: async () => Buffer.from('{"ok":true}'),
         };
       }
@@ -457,6 +457,34 @@ test('HTTP service rejects oversized responses before buffering untrusted bodies
   await assert.rejects(started, /stopped/i);
 });
 
+test('HTTP service rejects non-streaming responses without a bounded content length', async () => {
+  FakeBrowserWindow.instances.length = 0;
+  const { LxSourceRuntime } = loadRuntime();
+  const ipcMain = new FakeIpcMain();
+  const runtime = new LxSourceRuntime({
+    script: 'x',
+    currentScriptInfo: {},
+    fetchImpl: async () => ({
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+      arrayBuffer: async () => Buffer.from('unbounded fallback'),
+    }),
+    electron: { BrowserWindow: FakeBrowserWindow, ipcMain, app: { isPackaged: false } },
+  });
+  const started = runtime.start();
+  const win = FakeBrowserWindow.instances[0];
+  await assert.rejects(
+    ipcMain.handlers.get('mineradio-lx-http')(
+      { sender: win.webContents },
+      { runtimeId: runtime.runtimeId, requestId: 'fallback', url: 'https://example.com', options: {} },
+    ),
+    /HTTP_FAILED: Response length is unknown/,
+  );
+  runtime.stop();
+  await assert.rejects(started, /stopped/i);
+});
+
 test('zlib bridge rejects oversized input and output', async () => {
   FakeBrowserWindow.instances.length = 0;
   const { LxSourceRuntime } = loadRuntime();
@@ -483,6 +511,28 @@ test('zlib bridge rejects oversized input and output', async () => {
       { runtimeId: runtime.runtimeId, operation: 'inflate', data: bomb },
     ),
     /ZLIB_FAILED: Output too large/,
+  );
+  runtime.stop();
+  await assert.rejects(started, /stopped/i);
+});
+
+test('zlib bridge preflights oversized string input before Buffer allocation', async () => {
+  FakeBrowserWindow.instances.length = 0;
+  const { LxSourceRuntime } = loadRuntime();
+  const ipcMain = new FakeIpcMain();
+  const runtime = new LxSourceRuntime({
+    script: 'x',
+    currentScriptInfo: {},
+    electron: { BrowserWindow: FakeBrowserWindow, ipcMain, app: { isPackaged: false } },
+  });
+  const started = runtime.start();
+  const win = FakeBrowserWindow.instances[0];
+  await assert.rejects(
+    ipcMain.handlers.get('mineradio-lx-zlib')(
+      { sender: win.webContents },
+      { runtimeId: runtime.runtimeId, operation: 'deflate', data: 'x'.repeat(2 * 1024 * 1024 + 1) },
+    ),
+    /ZLIB_FAILED: Input too large/,
   );
   runtime.stop();
   await assert.rejects(started, /stopped/i);
