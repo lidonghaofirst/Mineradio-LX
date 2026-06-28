@@ -7,6 +7,7 @@ Mineradio-LX 是基于 [XxHuberrr/Mineradio](https://github.com/XxHuberrr/Minera
 ## 当前状态
 
 - 基于 Mineradio `1.1.1` 改造
+- 独立版版本：`1.1.1-lx.1`
 - 新增洛雪自定义音源管理入口
 - 支持导入、验证、启用、停用、替换、删除 `.js` 音源脚本
 - 播放时优先通过当前启用的自定义音源解析播放地址
@@ -14,9 +15,11 @@ Mineradio-LX 是基于 [XxHuberrr/Mineradio](https://github.com/XxHuberrr/Minera
 
 ## 下载
 
-当前仓库暂未发布独立安装包。
+Windows 安装包发布在本仓库 Releases：
 
-如果需要运行，可以先从源码构建：
+[下载 Mineradio-LX 1.1.1-lx.1 安装包](https://github.com/lidonghaofirst/Mineradio-LX/releases/tag/v1.1.1-lx.1)
+
+如果需要自行构建，也可以从源码运行：
 
 ```bash
 npm install
