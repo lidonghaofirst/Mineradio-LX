@@ -3,6 +3,10 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { parseScriptInfo } = require('./protocol');
 
+function clone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
 class CustomSourceStore {
   constructor(rootDir) {
     this.rootDir = rootDir;
@@ -13,15 +17,30 @@ class CustomSourceStore {
   }
 
   #readState() {
+    let raw;
     try {
-      const parsed = JSON.parse(fs.readFileSync(this.indexFile, 'utf8'));
-      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) throw new Error('Invalid source index');
-      return { activeId: parsed.activeId || '', items: parsed.items };
+      raw = fs.readFileSync(this.indexFile, 'utf8');
     } catch {
       const state = { activeId: '', items: [] };
       this.#writeState(state);
       return state;
     }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) throw new Error('Invalid source index');
+      return { activeId: parsed.activeId || '', items: parsed.items };
+    } catch {
+      this.#backupCorruptIndex();
+      const state = { activeId: '', items: [] };
+      this.#writeState(state);
+      return state;
+    }
+  }
+
+  #backupCorruptIndex() {
+    const backup = `${this.indexFile}.corrupt.${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+    fs.copyFileSync(this.indexFile, backup);
   }
 
   #writeState(state) {
@@ -38,26 +57,48 @@ class CustomSourceStore {
     return crypto.createHash('sha256').update(script).digest('hex');
   }
 
+  #scriptPath(id) {
+    return path.join(this.scriptDir, `${id}.js`);
+  }
+
+  #writeScriptAtomic(id, script) {
+    const finalPath = this.#scriptPath(id);
+    const temp = path.join(this.scriptDir, `${id}.${Date.now()}_${crypto.randomBytes(3).toString('hex')}.tmp`);
+    try {
+      fs.writeFileSync(temp, script, 'utf8');
+      fs.renameSync(temp, finalPath);
+    } catch (error) {
+      fs.rmSync(temp, { force: true });
+      throw error;
+    }
+  }
+
   importScript(originalPath, script) {
     const hash = this.#hash(script);
     if (this.state.items.some(item => item.hash === hash)) throw new Error('IMPORT_INVALID: duplicate script');
     const id = `user_api_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
     const item = { id, ...parseScriptInfo(script), originalPath: String(originalPath || ''), hash, allowUpdateAlert: true, status: 'idle', message: '' };
-    fs.writeFileSync(path.join(this.scriptDir, `${id}.js`), script, 'utf8');
+    this.#writeScriptAtomic(id, script);
     this.state.items.push(item);
-    this.#save();
-    return { ...item };
+    try {
+      this.#save();
+    } catch (error) {
+      this.state.items.pop();
+      fs.rmSync(this.#scriptPath(id), { force: true });
+      throw error;
+    }
+    return clone(item);
   }
 
-  list() { return this.state.items.map(item => ({ ...item, active: item.id === this.state.activeId })); }
-  get(id) { const item = this.state.items.find(value => value.id === id); return item ? { ...item } : null; }
-  getScript(id) { return fs.readFileSync(path.join(this.scriptDir, `${id}.js`), 'utf8'); }
+  list() { return this.state.items.map(item => ({ ...clone(item), active: item.id === this.state.activeId })); }
+  get(id) { const item = this.state.items.find(value => value.id === id); return item ? clone(item) : null; }
+  getScript(id) { return fs.readFileSync(this.#scriptPath(id), 'utf8'); }
   getActive() { return this.get(this.state.activeId); }
   setActive(id) { if (id && !this.get(id)) throw new Error('SOURCE_NOT_FOUND'); this.state.activeId = id || ''; this.#save(); }
   setStatus(id, status, message, sources) {
     const item = this.state.items.find(value => value.id === id);
     if (!item) return;
-    Object.assign(item, { status, message: String(message || ''), sources: sources || item.sources || {} });
+    Object.assign(item, { status, message: String(message || ''), sources: sources ? clone(sources) : clone(item.sources || {}) });
     this.#save();
   }
   setAllowUpdateAlert(id, enable) {
@@ -67,15 +108,23 @@ class CustomSourceStore {
     this.#save();
   }
   replaceScript(id, script) {
-    const item = this.state.items.find(value => value.id === id);
-    if (!item) throw new Error('SOURCE_NOT_FOUND');
+    const index = this.state.items.findIndex(value => value.id === id);
+    if (index === -1) throw new Error('SOURCE_NOT_FOUND');
+    const item = this.state.items[index];
+    const previousItem = clone(item);
+    const previousScript = this.getScript(id);
     const info = parseScriptInfo(script);
     const hash = this.#hash(script);
-    fs.writeFileSync(path.join(this.scriptDir, `${id}.js.next`), script, 'utf8');
-    fs.renameSync(path.join(this.scriptDir, `${id}.js.next`), path.join(this.scriptDir, `${id}.js`));
+    this.#writeScriptAtomic(id, script);
     Object.assign(item, info, { hash, status: 'idle', message: '' });
-    this.#save();
-    return { ...item };
+    try {
+      this.#save();
+    } catch (error) {
+      this.state.items[index] = previousItem;
+      this.#writeScriptAtomic(id, previousScript);
+      throw error;
+    }
+    return clone(item);
   }
   remove(id) {
     this.state.items = this.state.items.filter(item => item.id !== id);
