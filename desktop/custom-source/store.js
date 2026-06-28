@@ -116,6 +116,12 @@ class CustomSourceStore {
     fs.renameSync(paths.previousPath, paths.finalPath);
   }
 
+  #cleanupCommittedBackup(backupPath) {
+    try {
+      fs.rmSync(backupPath, { force: true });
+    } catch {}
+  }
+
   importScript(originalPath, script) {
     const hash = this.#hash(script);
     if (this.state.items.some(item => item.hash === hash)) throw new Error('IMPORT_INVALID: duplicate script');
@@ -189,7 +195,7 @@ class CustomSourceStore {
       this.#restoreScriptReplacement(replacement);
       throw error;
     }
-    fs.rmSync(replacement.previousPath, { force: true });
+    this.#cleanupCommittedBackup(replacement.previousPath);
     return clone(item);
   }
   remove(id) {
@@ -211,7 +217,7 @@ class CustomSourceStore {
       fs.renameSync(stagedPath, scriptPath);
       throw error;
     }
-    fs.rmSync(stagedPath, { force: true });
+    this.#cleanupCommittedBackup(stagedPath);
   }
 }
 

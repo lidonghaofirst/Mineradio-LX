@@ -271,6 +271,40 @@ test('replaceScript restores the old script by rename when writes keep failing',
   assert.equal(store.getScript(first.id), firstScript);
 });
 
+test('replaceScript succeeds when committed backup cleanup gets EPERM', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-source-'));
+  const store = new CustomSourceStore(root);
+  const firstScript = '/**\n * @name A\n * @version 1\n */\nvoid 0';
+  const secondScript = '/**\n * @name A\n * @version 2\n */\nvoid 0';
+  const first = store.importScript('a.js', firstScript);
+  const previousPath = path.join(root, 'scripts', `${first.id}.js.previous`);
+  const originalRmSync = fs.rmSync;
+  let result;
+
+  try {
+    fs.rmSync = function rmSync(file, options) {
+      if (String(file) === previousPath && fs.existsSync(previousPath)) {
+        const error = new Error('cleanup denied');
+        error.code = 'EPERM';
+        throw error;
+      }
+      return originalRmSync.apply(this, arguments);
+    };
+
+    assert.doesNotThrow(() => {
+      result = store.replaceScript(first.id, secondScript);
+    });
+  } finally {
+    fs.rmSync = originalRmSync;
+  }
+
+  assert.equal(result.version, '2');
+  assert.equal(store.get(first.id).version, '2');
+  assert.equal(store.getScript(first.id), secondScript);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'sources.json'), 'utf8')).items[0].version, '2');
+  assert.equal(fs.existsSync(previousPath), true);
+});
+
 test('imports, lists, activates, replaces, and removes scripts', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-source-'));
   const store = new CustomSourceStore(root);
@@ -334,6 +368,37 @@ test('remove restores memory, index, and script when saving the index fails', ()
   assert.equal(store.getActive().id, first.id);
   assert.equal(fs.readFileSync(indexFile, 'utf8'), originalIndex);
   assert.equal(store.getScript(first.id), script);
+});
+
+test('remove succeeds when committed backup cleanup gets EPERM', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-source-'));
+  const store = new CustomSourceStore(root);
+  const first = store.importScript('a.js', '/**\n * @name A\n */\nvoid 0');
+  store.setActive(first.id);
+  const scriptPath = path.join(root, 'scripts', `${first.id}.js`);
+  const removePath = `${scriptPath}.remove`;
+  const originalRmSync = fs.rmSync;
+
+  try {
+    fs.rmSync = function rmSync(file, options) {
+      if (String(file) === removePath && fs.existsSync(removePath)) {
+        const error = new Error('cleanup denied');
+        error.code = 'EPERM';
+        throw error;
+      }
+      return originalRmSync.apply(this, arguments);
+    };
+
+    assert.doesNotThrow(() => store.remove(first.id));
+  } finally {
+    fs.rmSync = originalRmSync;
+  }
+
+  assert.equal(store.get(first.id), null);
+  assert.equal(store.getActive(), null);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'sources.json'), 'utf8')), { activeId: '', items: [] });
+  assert.equal(fs.existsSync(scriptPath), false);
+  assert.equal(fs.existsSync(removePath), true);
 });
 
 test('rejects identical content', () => {
