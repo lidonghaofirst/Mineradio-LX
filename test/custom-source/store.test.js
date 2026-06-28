@@ -5,6 +5,14 @@ const os = require('node:os');
 const path = require('node:path');
 const { CustomSourceStore } = require('../../desktop/custom-source/store');
 
+test('initializes an empty index file on construction', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-source-'));
+  new CustomSourceStore(root);
+  const indexFile = path.join(root, 'sources.json');
+  assert.equal(fs.existsSync(indexFile), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(indexFile, 'utf8')), { activeId: '', items: [] });
+});
+
 test('imports, lists, activates, replaces, and removes scripts', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-source-'));
   const store = new CustomSourceStore(root);

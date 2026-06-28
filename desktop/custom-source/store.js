@@ -15,16 +15,23 @@ class CustomSourceStore {
   #readState() {
     try {
       const parsed = JSON.parse(fs.readFileSync(this.indexFile, 'utf8'));
-      return { activeId: parsed.activeId || '', items: Array.isArray(parsed.items) ? parsed.items : [] };
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) throw new Error('Invalid source index');
+      return { activeId: parsed.activeId || '', items: parsed.items };
     } catch {
-      return { activeId: '', items: [] };
+      const state = { activeId: '', items: [] };
+      this.#writeState(state);
+      return state;
     }
   }
 
-  #save() {
+  #writeState(state) {
     const temp = `${this.indexFile}.tmp`;
-    fs.writeFileSync(temp, JSON.stringify(this.state, null, 2), 'utf8');
+    fs.writeFileSync(temp, JSON.stringify(state, null, 2), 'utf8');
     fs.renameSync(temp, this.indexFile);
+  }
+
+  #save() {
+    this.#writeState(this.state);
   }
 
   #hash(script) {
