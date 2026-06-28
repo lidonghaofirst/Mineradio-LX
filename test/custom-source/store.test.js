@@ -25,6 +25,18 @@ test('backs up invalid index before initializing defaults', () => {
   assert.equal(fs.readFileSync(path.join(root, backups[0]), 'utf8'), invalid);
 });
 
+test('backs up schema-invalid index before initializing defaults', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-source-'));
+  const invalid = JSON.stringify({ activeId: { bad: true }, items: [1] });
+  fs.writeFileSync(path.join(root, 'sources.json'), invalid, 'utf8');
+  const store = new CustomSourceStore(root);
+  assert.deepEqual(store.list(), []);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'sources.json'), 'utf8')), { activeId: '', items: [] });
+  const backups = fs.readdirSync(root).filter(name => name.startsWith('sources.json.corrupt'));
+  assert.equal(backups.length, 1);
+  assert.equal(fs.readFileSync(path.join(root, backups[0]), 'utf8'), invalid);
+});
+
 test('keeps status sources isolated from caller and returned copies', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-source-'));
   const store = new CustomSourceStore(root);

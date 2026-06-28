@@ -7,6 +7,10 @@ function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 class CustomSourceStore {
   constructor(rootDir) {
     this.rootDir = rootDir;
@@ -28,14 +32,19 @@ class CustomSourceStore {
 
     try {
       const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) throw new Error('Invalid source index');
-      return { activeId: parsed.activeId || '', items: parsed.items };
+      return this.#normalizeState(parsed);
     } catch {
       this.#backupCorruptIndex();
       const state = { activeId: '', items: [] };
       this.#writeState(state);
       return state;
     }
+  }
+
+  #normalizeState(parsed) {
+    if (!isPlainObject(parsed) || !Array.isArray(parsed.items)) throw new Error('Invalid source index');
+    if (!parsed.items.every(item => isPlainObject(item) && typeof item.id === 'string' && item.id)) throw new Error('Invalid source item');
+    return { activeId: typeof parsed.activeId === 'string' ? parsed.activeId : '', items: parsed.items };
   }
 
   #backupCorruptIndex() {
